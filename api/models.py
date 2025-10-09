@@ -1,5 +1,7 @@
 # api/models.py
-from mongoengine import Document, StringField, EmailField, FileField
+from mongoengine import Document, StringField, EmailField, FileField,IntField, ReferenceField
+
+
 
 class Supplier(Document):
     # Business Information
@@ -32,3 +34,11 @@ class Supplier(Document):
 
     def __str__(self):
         return self.companyName
+
+
+class Delivery(Document):
+    supplier = ReferenceField(Supplier, required=True)  # Link to supplier
+    item = StringField(required=True)
+    quantity = IntField(required=True)
+    deliveryDate = StringField(required=True)
+    notes = StringField()

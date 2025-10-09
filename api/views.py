@@ -1,6 +1,6 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Supplier
+from .models import Supplier,Delivery
 from django.contrib.auth.hashers import make_password, check_password
 
 
@@ -66,3 +66,64 @@ def login_supplier(request):
             "companyName": supplier.companyName,
         }
     })
+
+
+@api_view(['POST'])
+def add_delivery(request):
+    supplier_id = request.data.get("supplierId")
+    item = request.data.get("item")
+    quantity = request.data.get("quantity")
+    delivery_date = request.data.get("deliveryDate")
+    notes = request.data.get("notes")
+
+    # Validate fields
+    if not (supplier_id and item and quantity and delivery_date):
+        return Response({"error": "All fields except notes are required"}, status=400)
+
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return Response({"error": "Supplier not found"}, status=404)
+
+    # Create delivery linked to the supplier
+    delivery = Delivery(
+        supplier=supplier,
+        item=item,
+        quantity=quantity,
+        deliveryDate=delivery_date,
+        notes=notes or ""
+    )
+    delivery.save()
+
+    return Response({
+        "message": "Delivery added successfully",
+        "delivery": {
+            "id": str(delivery.id),
+            "item": delivery.item,
+            "quantity": delivery.quantity,
+            "deliveryDate": delivery.deliveryDate,
+            "notes": delivery.notes
+        }
+    }, status=201)
+
+@api_view(['GET'])
+def get_deliveries_by_supplier(request, supplier_id):
+    try:
+        supplier = Supplier.objects.get(id=supplier_id)
+    except Supplier.DoesNotExist:
+        return Response({"error": "Supplier not found"}, status=404)
+
+    deliveries = Delivery.objects(supplier=supplier)
+
+    data = [
+        {
+            "id": str(delivery.id),
+            "item": delivery.item,
+            "quantity": delivery.quantity,
+            "deliveryDate": delivery.deliveryDate,
+            "notes": delivery.notes,
+        }
+        for delivery in deliveries
+    ]
+
+    return Response(data, status=200)
