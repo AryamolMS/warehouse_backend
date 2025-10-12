@@ -1,6 +1,6 @@
 # api/models.py
-from mongoengine import Document, StringField, EmailField, FileField,IntField, ReferenceField
-
+from mongoengine import Document, StringField, EmailField, FileField,IntField, ReferenceField,DateTimeField
+from datetime import datetime
 
 
 class Supplier(Document):
@@ -42,3 +42,14 @@ class Delivery(Document):
     quantity = IntField(required=True)
     deliveryDate = StringField(required=True)
     notes = StringField()
+
+
+class PickupRequest(Document):
+    supplier = ReferenceField(Supplier, required=True)
+    item = StringField(required=True)
+    quantity = IntField(required=True)
+    pickupDate = StringField(required=True)
+    status = StringField(default="Pending")
+    createdAt = DateTimeField(default=datetime.utcnow)
+
+    meta = {'collection': 'pickup_requests'}

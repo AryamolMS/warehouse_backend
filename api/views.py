@@ -2,6 +2,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Supplier,Delivery
 from django.contrib.auth.hashers import make_password, check_password
+from .models import PickupRequest, Supplier
+from .models import Supplier, PickupRequest
+
 
 
 @api_view(['POST'])
@@ -127,3 +130,57 @@ def get_deliveries_by_supplier(request, supplier_id):
     ]
 
     return Response(data, status=200)
+
+
+@api_view(['POST'])
+def add_pickup_request(request):
+    try:
+        supplier_id = request.data.get("supplierId")
+        item = request.data.get("item")
+        quantity = request.data.get("quantity")
+        pickupDate = request.data.get("pickupDate")
+
+        if not all([supplier_id, item, quantity, pickupDate]):
+            return Response({"error": "All fields are required"}, status=400)
+
+        supplier = Supplier.objects(id=supplier_id).first()
+        if not supplier:
+            return Response({"error": "Supplier not found"}, status=404)
+
+        pickup = PickupRequest(
+            supplier=supplier,
+            item=item,
+            quantity=int(quantity),
+            pickupDate=pickupDate
+        )
+        pickup.save()
+
+        return Response({
+            "message": "Pickup request added successfully",
+            "pickup": {
+                "id": str(pickup.id),
+                "item": pickup.item,
+                "quantity": pickup.quantity,
+                "pickupDate": pickup.pickupDate,
+                "status": pickup.status
+            }
+        }, status=201)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_pickups_by_supplier(request, supplier_id):
+    try:
+        pickups = PickupRequest.objects(supplier=supplier_id)
+        pickup_list = [{
+            "id": str(p.id),
+            "item": p.item,
+            "quantity": p.quantity,
+            "pickupDate": p.pickupDate,
+            "status": p.status
+        } for p in pickups]
+
+        return Response({"pickups": pickup_list})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
