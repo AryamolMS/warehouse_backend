@@ -12,9 +12,6 @@ def register_supplier(request):
     try:
         data = request.data
 
-        # Hash password before saving
-        hashed_password = make_password(data.get("password"))
-
         supplier = Supplier(
             companyName=data.get("companyName"),
             businessType=data.get("businessType"),
@@ -24,7 +21,7 @@ def register_supplier(request):
             phone=data.get("phone"),
             address=data.get("address"),
             username=data.get("username"),
-            password=hashed_password,  # ✅ store hashed password
+            password=data.get("password"),  # ⚠️ store plain password
             bankAccount=data.get("bankAccount"),
             ifsc=data.get("ifsc"),
             bankName=data.get("bankName"),
@@ -32,7 +29,6 @@ def register_supplier(request):
             productCategories=data.get("productCategories"),
         )
 
-        # Handle GST / License file properly
         if 'gstFile' in request.FILES:
             gst_file = request.FILES['gstFile']
             supplier.gstFile.put(gst_file, content_type=gst_file.content_type)
@@ -42,6 +38,7 @@ def register_supplier(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
 
 @api_view(['POST'])
@@ -57,8 +54,8 @@ def login_supplier(request):
     except Supplier.DoesNotExist:
         return Response({"error": "Invalid email or password"}, status=401)
 
-    # ✅ now check against hashed password
-    if not check_password(password, supplier.password):
+    # ⚠️ Direct string comparison since password is not hashed
+    if password != supplier.password:
         return Response({"error": "Invalid email or password"}, status=401)
 
     return Response({
@@ -68,7 +65,8 @@ def login_supplier(request):
             "email": supplier.email,
             "companyName": supplier.companyName,
         }
-    })
+    }, status=200)
+
 
 
 @api_view(['POST'])
