@@ -3,6 +3,8 @@ from mongoengine import Document, StringField, EmailField, FileField,IntField, R
 from datetime import datetime
 
 
+
+
 class Supplier(Document):
     # Business Information
     companyName = StringField(required=True, max_length=200)
@@ -44,12 +46,30 @@ class Delivery(Document):
     notes = StringField()
 
 
-class PickupRequest(Document):
-    supplier = ReferenceField(Supplier, required=True)
-    item = StringField(required=True)
-    quantity = IntField(required=True)
-    pickupDate = StringField(required=True)
-    status = StringField(default="Pending")
-    createdAt = DateTimeField(default=datetime.utcnow)
 
-    meta = {'collection': 'pickup_requests'}
+class PickupRequest(Document):
+    STATUS_CHOICES = (
+        ("Pending", "Pending"),
+        ("Confirmed", "Confirmed"),
+        ("In Transit", "In Transit"),
+        ("Completed", "Completed"),
+        ("Cancelled", "Cancelled"),
+    )
+
+    supplier = ReferenceField('Supplier', required=True)
+    item = StringField(required=True)
+    quantity = IntField(required=True, min_value=1)
+    pickupDate = StringField(required=True)
+    pickupTime = StringField()
+    specialInstructions = StringField()
+    status = StringField(choices=[s[0] for s in STATUS_CHOICES], default="Pending")
+    createdAt = DateTimeField(default=datetime.utcnow)
+    updatedAt = DateTimeField(default=datetime.utcnow)
+
+    meta = {
+        'collection': 'pickup_requests',
+        'ordering': ['-createdAt']
+    }
+
+    def __str__(self):
+        return f"{self.item} - {self.supplier.companyName} - {self.pickupDate}"

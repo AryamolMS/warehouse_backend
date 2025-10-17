@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Supplier
+from .models import Supplier,PickupRequest
 
 class SupplierSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -28,3 +28,21 @@ class SupplierSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField()
+
+
+class PickupRequestSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    supplier = serializers.CharField()
+    item = serializers.CharField(required=True)
+    quantity = serializers.IntegerField(required=True)
+    pickupDate = serializers.CharField(required=True)
+    pickupTime = serializers.CharField(allow_blank=True, required=False)
+    specialInstructions = serializers.CharField(allow_blank=True, required=False)
+    status = serializers.CharField(read_only=True)
+    createdAt = serializers.DateTimeField(read_only=True)
+    updatedAt = serializers.DateTimeField(read_only=True)
+
+    def create(self, validated_data):
+        pickup_request = PickupRequest(**validated_data)
+        pickup_request.save()
+        return pickup_request
