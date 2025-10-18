@@ -1,8 +1,7 @@
 # api/models.py
 from mongoengine import Document, StringField, EmailField, FileField,IntField, ReferenceField,DateTimeField
 from datetime import datetime
-
-
+import mongoengine
 
 
 class Supplier(Document):
@@ -37,39 +36,87 @@ class Supplier(Document):
     def __str__(self):
         return self.companyName
 
-
-class Delivery(Document):
-    supplier = ReferenceField(Supplier, required=True)  # Link to supplier
-    item = StringField(required=True)
-    quantity = IntField(required=True)
-    deliveryDate = StringField(required=True)
-    notes = StringField()
-
-
-
-class PickupRequest(Document):
-    STATUS_CHOICES = (
-        ("Pending", "Pending"),
-        ("Confirmed", "Confirmed"),
-        ("In Transit", "In Transit"),
-        ("Completed", "Completed"),
-        ("Cancelled", "Cancelled"),
+class Delivery(mongoengine.Document):
+    supplier = mongoengine.ReferenceField('Supplier', required=True)
+    # Item Details
+    item = mongoengine.StringField(required=True)
+    quantity = mongoengine.IntField(required=True)
+    unit = mongoengine.StringField(default='kg')
+    category = mongoengine.StringField(default='')
+    batchNumber = mongoengine.StringField(default='')
+    manufacturer = mongoengine.StringField(default='')
+    # Delivery Schedule
+    deliveryDate = mongoengine.StringField(required=True)
+    deliveryTime = mongoengine.StringField(default='')
+    expiryDate = mongoengine.StringField(default='')
+    # Storage & Packaging
+    storageType = mongoengine.StringField(required=True)
+    temperatureRequirement = mongoengine.StringField(default='')
+    packagingType = mongoengine.StringField(default='')
+    palletCount = mongoengine.IntField(default=0)
+    # Safety & Compliance
+    hazardousClass = mongoengine.StringField(default='')
+    specialHandling = mongoengine.StringField(default='')
+    # Documentation
+    invoiceNumber = mongoengine.StringField(default='')
+    poNumber = mongoengine.StringField(default='')
+    # Additional
+    notes = mongoengine.StringField(default='')
+    # Status & Metadata (ADD THIS)
+    status = mongoengine.StringField(
+        default='pending',
+        choices=['pending', 'accepted', 'rejected']
     )
+    createdAt = mongoengine.DateTimeField(default=datetime.now)
+    updatedAt = mongoengine.DateTimeField(default=datetime.now)
+    
+    meta = {
+        'collection': 'deliveries',
+        'indexes': ['supplier', 'status', '-createdAt']
+    }
 
-    supplier = ReferenceField('Supplier', required=True)
+
+
+import mongoengine
+from datetime import datetime
+
+class PickupRequest(mongoengine.Document):
+    supplier = mongoengine.ReferenceField('Supplier', required=True)  # ← Make sure this line exists
+    item = mongoengine.StringField(required=True, max_length=255)
+    quantity = mongoengine.IntField(required=True, min_value=0)
+    pickupDate = mongoengine.StringField(required=True)
+    pickupTime = mongoengine.StringField(max_length=50)
+    specialInstructions = mongoengine.StringField(max_length=1000)
+    status = mongoengine.StringField(
+        required=True,
+        default='pending',
+        choices=['pending', 'approved', 'rejected', 'completed', 'cancelled']
+    )
+    rejectionReason = mongoengine.StringField(default='', max_length=500)
+    createdAt = mongoengine.DateTimeField(default=datetime.now)
+    updatedAt = mongoengine.DateTimeField(default=datetime.now)
+    
+    meta = {
+        'collection': 'pickup_requests',
+        'indexes': ['status', 'supplier', '-createdAt']
+    }
+    
+    def save(self, *args, **kwargs):
+        self.updatedAt = datetime.now()
+        return super(PickupRequest, self).save(*args, **kwargs)
+
+
+from mongoengine import Document, StringField, IntField, DateTimeField
+
+from datetime import datetime
+
+class WarehouseStock(Document):
     item = StringField(required=True)
-    quantity = IntField(required=True, min_value=1)
-    pickupDate = StringField(required=True)
-    pickupTime = StringField()
-    specialInstructions = StringField()
-    status = StringField(choices=[s[0] for s in STATUS_CHOICES], default="Pending")
+    quantity = IntField(required=True, default=0)
+    unit = StringField(default="pcs")
+    category = StringField(default="")
+    storageType = StringField(default="")
     createdAt = DateTimeField(default=datetime.utcnow)
     updatedAt = DateTimeField(default=datetime.utcnow)
 
-    meta = {
-        'collection': 'pickup_requests',
-        'ordering': ['-createdAt']
-    }
-
-    def __str__(self):
-        return f"{self.item} - {self.supplier.companyName} - {self.pickupDate}"
+    meta = {'collection': 'warehouse_stock'}

@@ -46,3 +46,38 @@ class PickupRequestSerializer(serializers.Serializer):
         pickup_request = PickupRequest(**validated_data)
         pickup_request.save()
         return pickup_request
+
+from rest_framework_mongoengine.serializers import DocumentSerializer
+from rest_framework import serializers
+from .models import PickupRequest
+
+class PickupRequestSerializer(DocumentSerializer):
+    """
+    Serializer for PickupRequest Document
+    """
+    id = serializers.SerializerMethodField()
+    
+    def get_id(self, obj):
+        """Convert ObjectId to string"""
+        return str(obj.id)
+    
+    class Meta:
+        model = PickupRequest
+        fields = [
+            'id', 'companyName', 'item', 'quantity',
+            'pickupDate', 'pickupTime', 'specialInstructions',
+            'status', 'rejectionReason', 'createdAt', 'updatedAt'
+        ]
+        read_only_fields = ['id', 'createdAt', 'updatedAt']
+
+
+class ApproveRejectSerializer(serializers.Serializer):
+    """
+    Serializer for approve/reject actions
+    """
+    reason = serializers.CharField(
+        max_length=500, 
+        required=False, 
+        allow_blank=True,
+        help_text="Optional reason for rejection"
+    )
