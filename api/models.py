@@ -35,6 +35,8 @@ class Supplier(Document):
 
     def __str__(self):
         return self.companyName
+    
+    
 
 class Delivery(mongoengine.Document):
     supplier = mongoengine.ReferenceField('Supplier', required=True)

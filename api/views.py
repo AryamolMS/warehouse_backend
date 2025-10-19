@@ -18,7 +18,7 @@ from .serializers import PickupRequestSerializer, ApproveRejectSerializer
 from .models import Delivery, WarehouseStock
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
-
+from .models import Supplier
 
 
 @api_view(['POST'])
@@ -944,3 +944,36 @@ def update_warehouse_stock(request):
         'success': False,
         'error': 'Only POST method is allowed'
     }, status=405)
+
+
+def get_all_suppliers(request):
+    if request.method == 'GET':
+        try:
+            suppliers = Supplier.objects()
+            supplier_list = []
+
+            for s in suppliers:
+                supplier_list.append({
+                    "id": str(s.id),
+                    "companyName": s.companyName,
+                    "businessType": s.businessType,
+                    "registrationNumber": s.registrationNumber,
+                    "contactPerson": s.contactPerson,
+                    "email": s.email,
+                    "phone": s.phone,
+                    "address": s.address,
+                    "username": s.username,
+                    "bankAccount": s.bankAccount,
+                    "ifsc": s.ifsc,
+                    "bankName": s.bankName,
+                    "paymentMethod": s.paymentMethod,
+                    "productCategories": s.productCategories,
+                    "gstFile": str(s.gstFile.grid_id) if s.gstFile else None
+                })
+
+            return JsonResponse({"suppliers": supplier_list}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method"}, status=400)

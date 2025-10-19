@@ -1,5 +1,7 @@
 from django.urls import path
-from .views import register_supplier, login_supplier, request_pickup, get_pickup_requests, add_delivery,get_deliveries,approve_pickup_request,reject_pickup_request, get_all_pickup_requests_admin,accept_delivery,get_all_deliveries,accept_delivery,reject_delivery,warehouse_inventory,check_warehouse_stock,update_warehouse_stock
+from .views import register_supplier, login_supplier, request_pickup, get_pickup_requests, add_delivery,get_deliveries,approve_pickup_request,reject_pickup_request, get_all_pickup_requests_admin,accept_delivery,get_all_deliveries,accept_delivery,reject_delivery,warehouse_inventory,check_warehouse_stock,update_warehouse_stock,get_all_suppliers
+
+
 urlpatterns = [
     path('register-supplier/', register_supplier, name='register_supplier'),
     path('login/', login_supplier, name='login_supplier'),
@@ -26,7 +28,7 @@ urlpatterns = [
     path('check-warehouse-stock/', check_warehouse_stock, name='check_warehouse_stock'),
     path('update-warehouse-stock/', update_warehouse_stock, name='update_warehouse_stock'),
 
-
+  path('get-suppliers/', get_all_suppliers, name='get_all_suppliers'),
    
 ]
 
