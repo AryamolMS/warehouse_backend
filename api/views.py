@@ -16,6 +16,9 @@ from bson.errors import InvalidId
 from .models import PickupRequest
 from .serializers import PickupRequestSerializer, ApproveRejectSerializer
 from .models import Delivery, WarehouseStock
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view
+
 
 
 @api_view(['POST'])
@@ -363,23 +366,22 @@ def get_all_pickup_requests_admin(request):
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 @api_view(['PATCH'])
 def approve_pickup_request(request, request_id):
     """
-    Approve a pickup request
+    Approve pickup request and reduce warehouse stock
     URL: /api/pickup/approve/<request_id>/
     Method: PATCH
     """
     try:
-        # Validate ObjectId
+        # Step 1: Validate ObjectId
         if not ObjectId.is_valid(request_id):
             return Response({
                 'success': False,
                 'error': 'Invalid request ID format'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get the pickup request
+        # Step 2: Get the pickup request
         try:
             pickup_request = PickupRequest.objects.get(id=request_id)
         except PickupRequest.DoesNotExist:
@@ -388,19 +390,42 @@ def approve_pickup_request(request, request_id):
                 'error': 'Pickup request not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Check if already approved
+        # Step 3: Check if already approved
         if pickup_request.status == 'approved':
             return Response({
                 'success': False,
                 'message': 'Pickup request is already approved'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Update status to approved
+        # Step 4: Check warehouse stock before approving
+        warehouse_item = WarehouseStock.objects(item__iexact=pickup_request.item).first()
+        
+        if not warehouse_item:
+            return Response({
+                'success': False,
+                'error': f'Item "{pickup_request.item}" not found in warehouse'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        current_stock = int(warehouse_item.quantity)
+        quantity_needed = int(pickup_request.quantity)
+        
+        if current_stock < quantity_needed:
+            return Response({
+                'success': False,
+                'error': f'Insufficient stock. Available: {current_stock}, Needed: {quantity_needed}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Step 5: Update pickup request status to approved
         pickup_request.status = 'approved'
         pickup_request.updatedAt = datetime.now()
         pickup_request.save()
         
-        # Prepare response data
+        # Step 6: Reduce warehouse stock
+        warehouse_item.quantity = current_stock - quantity_needed
+        warehouse_item.updatedAt = datetime.utcnow()
+        warehouse_item.save()
+        
+        # Step 7: Prepare response data
         response_data = {
             "id": str(pickup_request.id),
             "supplier": str(pickup_request.supplier.id),
@@ -418,11 +443,20 @@ def approve_pickup_request(request, request_id):
         
         return Response({
             'success': True,
-            'message': 'Pickup request approved successfully',
-            'data': response_data
+            'message': f'Pickup request approved successfully. Warehouse stock reduced by {quantity_needed} units.',
+            'data': response_data,
+            'warehouseUpdate': {
+                'previousStock': current_stock,
+                'newStock': current_stock - quantity_needed,
+                'reduced': quantity_needed
+            }
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
+        print(f"[Approve Pickup] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
         return Response({
             'success': False,
             'error': str(e)
@@ -674,44 +708,65 @@ def reject_delivery(request, delivery_id):
 @api_view(['GET'])
 def warehouse_inventory(request):
     """
-    Get all accepted deliveries (warehouse inventory)
+    Get current warehouse stock (reflects all pickups and deliveries)
     URL: /api/warehouse_inventory/
     """
     try:
-        # Fetch only accepted deliveries
-        accepted_deliveries = Delivery.objects.filter(status='accepted').order_by('-createdAt')
+        # ✅ Fetch from WarehouseStock collection - the single source of truth
+        warehouse_items = WarehouseStock.objects.all().order_by('-createdAt')
         
         inventory_data = []
-        for delivery in accepted_deliveries:
+        for item in warehouse_items:
             try:
-                # Safely get supplier name
+                # Try to find the most recent accepted delivery for this item to get supplier info
+                related_delivery = Delivery.objects.filter(
+                    item=item.item,
+                    status='accepted'
+                ).order_by('-createdAt').first()
+                
+                # Default values
                 supplier_name = "Unknown Supplier"
-                if delivery.supplier:
-                    supplier_name = getattr(delivery.supplier, 'companyName', 'Unknown Supplier')
+                batch_number = ""
+                delivery_date = ""
+                expiry_date = ""
+                manufacturer = ""
+                packaging_type = ""
+                temperature_requirement = ""
+                notes = ""
+                
+                # Get additional info from delivery if exists
+                if related_delivery:
+                    supplier_name = related_delivery.supplier.companyName if related_delivery.supplier else "Unknown Supplier"
+                    batch_number = getattr(related_delivery, 'batchNumber', '')
+                    delivery_date = getattr(related_delivery, 'deliveryDate', '')
+                    expiry_date = getattr(related_delivery, 'expiryDate', '')
+                    manufacturer = getattr(related_delivery, 'manufacturer', '')
+                    packaging_type = getattr(related_delivery, 'packagingType', '')
+                    temperature_requirement = getattr(related_delivery, 'temperatureRequirement', '')
+                    notes = getattr(related_delivery, 'notes', '')
                 
                 inventory_data.append({
-                    "id": str(delivery.id),
+                    "id": str(item.id),
                     "supplierName": supplier_name,
-                    # Item Details
-                    "item": getattr(delivery, 'item', ''),
-                    "quantity": getattr(delivery, 'quantity', 0),
-                    "unit": getattr(delivery, 'unit', 'kg'),
-                    "category": getattr(delivery, 'category', ''),
-                    "batchNumber": getattr(delivery, 'batchNumber', ''),
-                    "manufacturer": getattr(delivery, 'manufacturer', ''),
-                    # Delivery & Expiry
-                    "deliveryDate": getattr(delivery, 'deliveryDate', ''),
-                    "expiryDate": getattr(delivery, 'expiryDate', ''),
-                    # Storage
-                    "storageType": getattr(delivery, 'storageType', ''),
-                    "temperatureRequirement": getattr(delivery, 'temperatureRequirement', ''),
-                    "packagingType": getattr(delivery, 'packagingType', ''),
-                    # Additional
-                    "notes": getattr(delivery, 'notes', ''),
-                    "createdAt": delivery.createdAt.isoformat() if hasattr(delivery, 'createdAt') and delivery.createdAt else None,
+                    # ✅ CORE DATA FROM WAREHOUSE STOCK (reflects pickups)
+                    "item": item.item,
+                    "quantity": item.quantity,  # ✅ This updates when pickup approved!
+                    "unit": getattr(item, 'unit', 'kg'),
+                    "category": getattr(item, 'category', ''),
+                    "storageType": getattr(item, 'storageType', ''),
+                    # ✅ SUPPLEMENTARY DATA FROM DELIVERY
+                    "batchNumber": batch_number,
+                    "manufacturer": manufacturer,
+                    "deliveryDate": delivery_date,
+                    "expiryDate": expiry_date,
+                    "temperatureRequirement": temperature_requirement,
+                    "packagingType": packaging_type,
+                    "notes": notes,
+                    # Metadata
+                    "createdAt": item.createdAt.isoformat() if hasattr(item, 'createdAt') and item.createdAt else None,
                 })
             except Exception as item_error:
-                print(f"Error processing inventory item {delivery.id}: {str(item_error)}")
+                print(f"Error processing inventory item {item.id}: {str(item_error)}")
                 continue
         
         return Response({
@@ -728,7 +783,6 @@ def warehouse_inventory(request):
             'success': False,
             'error': str(e)
         }, status=500)
-
 # pickups/signals.py
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -752,3 +806,141 @@ def reduce_inventory_on_approval(sender, instance, created, **kwargs):
                 inventory_item.save()
             else:
                 raise ValueError("Insufficient inventory stock")
+
+
+# views.py
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import json
+from datetime import datetime
+from .models import WarehouseStock  # Import your MongoEngine model
+
+@csrf_exempt
+def check_warehouse_stock(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            item = data.get('item')
+            requested_quantity = int(data.get('requestedQuantity', 0))
+            
+            print(f"Checking stock for: {item}, quantity: {requested_quantity}")  # Debug
+            
+            # MongoEngine query (case-insensitive)
+            warehouse_item = WarehouseStock.objects(item__iexact=item).first()
+            
+            # Alternative: Case-sensitive exact match
+            # warehouse_item = WarehouseStock.objects(item=item).first()
+            
+            if warehouse_item:
+                current_stock = int(warehouse_item.quantity)
+                
+                print(f"Found item: {warehouse_item.item}, stock: {current_stock}")  # Debug
+                
+                return JsonResponse({
+                    'available': True,
+                    'currentStock': current_stock,
+                    'message': 'Stock check successful'
+                })
+            else:
+                print(f"Item not found: {item}")  # Debug
+                print(f"Available items: {[item.item for item in WarehouseStock.objects.all()]}")  # Debug
+                
+                return JsonResponse({
+                    'available': False,
+                    'currentStock': 0,
+                    'message': f'Item "{item}" not found in warehouse'
+                }, status=404)
+                
+        except Exception as e:
+            print(f"Error in check_warehouse_stock: {str(e)}")  # Debug
+            import traceback
+            traceback.print_exc()  # Print full error
+            
+            return JsonResponse({
+                'error': str(e)
+            }, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+
+# views.py
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import json
+from .models import WarehouseStock
+
+@csrf_exempt
+def update_warehouse_stock(request):
+    """
+    Reduce warehouse stock quantity after pickup approval.
+    Expects POST request with: {"item": "item_name", "quantity": 50}
+    """
+    if request.method == 'POST':
+        try:
+            body_unicode = request.body.decode('utf-8')
+            data = json.loads(body_unicode)
+            
+            item_name = data.get('item', '').strip()
+            quantity_to_reduce = int(data.get('quantity', 0))
+            
+            print(f"[Update Stock] Item: {item_name}, Reduce by: {quantity_to_reduce}")
+            
+            if not item_name or quantity_to_reduce <= 0:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid item name or quantity'
+                }, status=400)
+            
+            # Find the warehouse item (case-insensitive)
+            warehouse_item = WarehouseStock.objects(item__iexact=item_name).first()
+            
+            if not warehouse_item:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Item "{item_name}" not found in warehouse'
+                }, status=404)
+            
+            current_stock = int(warehouse_item.quantity)
+            
+            # Check if enough stock is available
+            if current_stock < quantity_to_reduce:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Insufficient stock. Available: {current_stock}, Requested: {quantity_to_reduce}'
+                }, status=400)
+            
+            # Update the stock quantity
+            new_quantity = current_stock - quantity_to_reduce
+            warehouse_item.quantity = new_quantity
+            warehouse_item.save()
+            
+            print(f"[Update Stock] Success - New quantity: {new_quantity}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Stock updated successfully',
+                'previousQuantity': current_stock,
+                'newQuantity': new_quantity,
+                'reducedBy': quantity_to_reduce
+            }, status=200)
+            
+        except json.JSONDecodeError as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid JSON: {str(e)}'
+            }, status=400)
+            
+        except Exception as e:
+            print(f"[Update Stock] Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Only POST method is allowed'
+    }, status=405)

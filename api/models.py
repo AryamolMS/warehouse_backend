@@ -120,3 +120,4 @@ class WarehouseStock(Document):
     updatedAt = DateTimeField(default=datetime.utcnow)
 
     meta = {'collection': 'warehouse_stock'}
+
